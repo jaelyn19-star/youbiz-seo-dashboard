@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YouBiz SEO Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+:root{--bg:#0f1117;--card:#1a1d27;--border:#2a2e3d;--text:#e4e6eb;--dim:#8b8f9e;--accent:#6366f1;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--blue:#3b82f6}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding:24px;max-width:1200px;margin:0 auto}
+h1{font-size:24px;font-weight:700;background:linear-gradient(135deg,var(--accent),#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px}
+.subtitle{color:var(--dim);font-size:13px;margin-bottom:14px}
+.subtitle a{color:var(--accent);text-decoration:none}
+.notice{background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.3);color:var(--amber);border-radius:10px;padding:11px 14px;font-size:12.5px;margin-bottom:22px;line-height:1.5}
+.notice b{color:#fbbf24}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:24px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px}
+.kpi-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);margin-bottom:8px}
+.kpi-value{font-size:32px;font-weight:700}
+.kpi-sub{font-size:13px;color:var(--dim);margin-top:4px}
+.kpi-sub .pos{color:var(--green)}.kpi-sub .neg{color:var(--red)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.card h3{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);margin-bottom:16px}
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+@media(max-width:768px){.chart-row{grid-template-columns:1fr}}
+canvas{max-height:280px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:var(--bg);color:var(--dim);text-transform:uppercase;font-size:10px;letter-spacing:.05em;padding:8px 6px;text-align:center;position:sticky;top:0}
+td{padding:6px;text-align:center;border-bottom:1px solid var(--border)}
+td.label{text-align:left;font-weight:600}
+.ok{color:var(--green);font-weight:600}.warn{color:var(--amber);font-weight:600}.miss{color:var(--red);font-weight:600}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.badge{display:inline-block;padding:2px 10px;border-radius:6px;font-size:12px;font-weight:600}
+.badge.ok{background:rgba(34,197,94,.12);color:var(--green)}
+.badge.warn{background:rgba(245,158,11,.12);color:var(--amber)}
+.badge.miss{background:rgba(239,68,68,.12);color:var(--red)}
+.badge.none{background:rgba(139,143,158,.12);color:var(--dim)}
+.hp-table td{text-align:left;padding:8px 12px}
+.hp-table td:last-child{text-align:center}
+.footer{color:var(--dim);font-size:11px;margin-top:24px;text-align:center;line-height:1.6}
+</style></head><body>
+
+<h1>YouBiz SEO Dashboard</h1>
+<div class="subtitle" id="subtitle">loading…</div>
+<div class="notice" id="notice"></div>
+
+<div class="kpi-grid" id="kpis"></div>
+
+<div class="chart-row">
+  <div class="card"><h3>Clicks vs Target</h3><canvas id="clicksChart"></canvas></div>
+  <div class="card"><h3>Impressions (SGP)</h3><canvas id="imprChart"></canvas></div>
+</div>
+<div class="chart-row">
+  <div class="card"><h3>Top 10 Keywords vs Target</h3><canvas id="top10Chart"></canvas></div>
+  <div class="card"><h3>Top 10 by Value Tier</h3><canvas id="tierChart"></canvas></div>
+</div>
+
+<div class="card">
+  <h3 id="hpTitle">Priority Keyword Tracker</h3>
+  <table class="hp-table" id="hpTable"></table>
+</div>
+
+<div class="card">
+  <h3>Monthly Performance</h3>
+  <div style="overflow-x:auto"><table id="monthlyTable"></table></div>
+</div>
+
+<div class="footer" id="footer"></div>
+
+<script>
+const num = n => (n==null ? "—" : Math.round(n).toLocaleString());
+const pct = (a,t) => (t ? Math.round(a/t*100) : null);
+const pctClass = p => p==null ? "" : (p>=100 ? "ok" : (p>=85 ? "warn" : "miss"));
+const momHTML = (v,suffix="%") => v==null ? '<span class=""></span>'
+  : `<span class="${v>0?'pos':(v<0?'neg':'')}">${v>0?'+':''}${v}${suffix}</span>`;
+const posBadge = p => p==null ? '<span class="badge none">—</span>'
+  : `<span class="badge ${p<=5?'ok':(p<=10?'warn':'miss')}">#${Math.round(p)}</span>`;
+const proj = r => (r.days && r.days_in_month && r.days < r.days_in_month)
+  ? Math.round(r.clicks / r.days * r.days_in_month) : null;
+const projImpr = r => (r.days && r.days_in_month && r.days < r.days_in_month)
+  ? Math.round(r.impressions / r.days * r.days_in_month) : null;
+
+const chartOpts = {responsive:true,plugins:{legend:{labels:{color:'#8b8f9e',font:{size:11}}}},
+  scales:{x:{ticks:{color:'#8b8f9e'},grid:{color:'#2a2e3d'}},y:{ticks:{color:'#8b8f9e'},grid:{color:'#2a2e3d'}}}};
+
+fetch("data.json?_="+Date.now()).then(r=>r.json()).then(d=>{
+  const rows = d.rows;
+  const cur = rows[rows.length-1];
+  const curPartial = cur.days < cur.days_in_month - 2;
+  const hasTargets = d.targets_set;
+
+  document.getElementById("subtitle").innerHTML =
+    `GSC-based metrics &middot; blog only (<code>you.co/biz/blog/</code>) &middot; Updated ${d.generated} &middot; `
+    + `<a href="${d.sheet_url}" target="_blank">📄 Source sheet → Dashboard v2</a>`;
+
+  // Launch-baseline notice
+  const totalClicks = rows.reduce((s,r)=>s+r.clicks,0);
+  document.getElementById("notice").innerHTML =
+    `<b>Blog just launched.</b> This tracks the YouBiz blog only — homepage & product pages are excluded. `
+    + `Organic blog traffic was ~0 through the early months; total blog clicks across the period so far: <b>${totalClicks}</b>. `
+    + `Treat the numbers below as a <b>baseline</b> — the signal is Coverage & Top 10 climbing as articles publish (30–90 day lag). `
+    + (hasTargets ? '' : `Targets aren’t set yet, so Target/% columns are blank — add Clicks/Top 10 targets to the sheet’s Dashboard v2 tab and they activate here automatically.`);
+
+  // KPI cards (current month, MTD)
+  const cp = proj(cur), ip = projImpr(cur);
+  const clkSub = (curPartial ? `Projected: ${num(cp)}` : `Actual`)
+    + (hasTargets && cur.clicks_target ? ` / ${num(cur.clicks_target)} (<span class="${pctClass(pct(curPartial?cp:cur.clicks,cur.clicks_target))}">${pct(curPartial?cp:cur.clicks,cur.clicks_target)}%</span>)` : ` &middot; no target set`);
+  const t10pctV = hasTargets && cur.top10_target ? pct(cur.top10, cur.top10_target) : null;
+  const kpis = [
+    {l:`Organic Blog Clicks &middot; ${cur.month}${curPartial?` (${cur.days}d MTD)`:''}`, v:num(cur.clicks), s:clkSub},
+    {l:`Impressions (SGP) &middot; ${cur.month}${curPartial?` (${cur.days}d MTD)`:''}`, v:num(cur.impressions),
+     s:`${curPartial?`Projected: ${num(ip)} &middot; `:''}Coverage: ${cur.coverage}/${cur.universe}`},
+    {l:`Top 10 Keywords (GSC SGP) &middot; ${cur.month}`,
+     v:`${cur.top10}${hasTargets&&cur.top10_target?` <span style="font-size:18px;color:var(--dim)">/ ${cur.top10_target}</span>`:''}`,
+     s:`${t10pctV!=null?`(<span class="${pctClass(t10pctV)}">${t10pctV}%</span> of target) &middot; `:''}MoM: ${momHTML(cur.top10_mom,'')||'—'} &middot; Priority-1: ${cur.p1_in_top10}/${cur.p1_total}`},
+  ];
+  document.getElementById("kpis").innerHTML = kpis.map(k=>
+    `<div class="kpi"><div class="kpi-label">${k.l}</div><div class="kpi-value">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join("");
+
+  // HP / Priority keyword tracker
+  document.getElementById("hpTitle").textContent = `${d.hp_label} (${d.hp_tracker.length} keywords)`;
+  document.getElementById("hpTable").innerHTML =
+    `<tr><th style="text-align:left">Keyword</th><th style="text-align:left">Value</th><th style="text-align:left">SV</th><th>Blog Position</th></tr>`
+    + d.hp_tracker.map(h=>`<tr><td>${h.keyword}</td><td>${h.value}</td><td>${h.sv||'—'}</td><td>${posBadge(h.position)}</td></tr>`).join("");
+
+  // Monthly performance table
+  const head = `<tr><th>Month</th><th>Clicks</th><th>Target</th><th>%</th><th>MoM</th>
+    <th>Impr(SGP)</th><th>MoM</th><th>Top10</th><th>Target</th><th>%</th><th>MoM</th>
+    <th>VH</th><th>H</th><th>M</th><th>L</th><th>HP</th></tr>`;
+  const body = rows.map(r=>{
+    const partial = r===cur && curPartial;
+    const cpr = proj(r), ipr = projImpr(r);
+    const cPct = r.clicks_target ? pct(partial?cpr:r.clicks, r.clicks_target) : null;
+    const tPct = r.top10_target ? pct(r.top10, r.top10_target) : null;
+    const t = r.tiers;
+    return `<tr>
+      <td class="label">${r.month}${partial?` <span style="color:var(--dim);font-weight:400">(${r.days}d)</span>`:''}</td>
+      <td>${num(r.clicks)}${partial?` <span style="color:var(--dim)">→${num(cpr)}</span>`:''}</td>
+      <td>${r.clicks_target?num(r.clicks_target):'—'}</td>
+      <td class="${pctClass(cPct)}">${cPct!=null?cPct+'%':''}</td>
+      <td>${momHTML(r.clicks_mom)}</td>
+      <td>${num(r.impressions)}${partial?` <span style="color:var(--dim)">→${num(ipr)}</span>`:''}</td>
+      <td>${momHTML(r.impr_mom)}</td>
+      <td>${r.top10}</td>
+      <td>${r.top10_target?num(r.top10_target):'—'}</td>
+      <td class="${pctClass(tPct)}">${tPct!=null?tPct+'%':''}</td>
+      <td>${momHTML(r.top10_mom,'')}</td>
+      <td>${t["Very high"]}</td><td>${t["High"]}</td><td>${t["Mid"]}</td><td>${t["L"]}</td>
+      <td>${r.p1_in_top10}/${r.p1_total}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById("monthlyTable").innerHTML = head + body;
+
+  document.getElementById("footer").innerHTML =
+    `Scope: YouBiz blog only (<code>you.co/biz/blog/</code>) &middot; Data: GSC (clicks=all countries, impressions+Top10=SGP) via <code>sc-domain:you.co</code><br>`
+    + `Universe: ${d.universe_size} tracked keywords (Keywords v2) &middot; Sheet-linked: metrics written to & read from the Dashboard v2 tab &middot; Targets: ${hasTargets?'set':'not set yet'}`;
+
+  // ---- charts ----
+  const labels = rows.map(r=>r.month);
+  const clicksActual = rows.map(r=>r.clicks);
+  const clicksProj = rows.map(r=> (r===cur&&curPartial) ? proj(r) : null);
+  const imprActual = rows.map(r=>r.impressions);
+  const imprProj = rows.map(r=> (r===cur&&curPartial) ? projImpr(r) : null);
+  const top10Actual = rows.map(r=>r.top10);
+  const clkTarget = rows.map(r=>r.clicks_target);
+  const t10Target = rows.map(r=>r.top10_target);
+  const anyClkTarget = clkTarget.some(v=>v);
+  const anyT10Target = t10Target.some(v=>v);
+
+  const clicksDS = [
+    {label:'Actual',data:clicksActual,borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,.1)',fill:true,tension:.3},
+    {label:'Projected',data:clicksProj,borderColor:'#6366f1',pointStyle:'circle',pointRadius:6,pointBackgroundColor:'transparent',pointBorderColor:'#6366f1',pointBorderWidth:2,showLine:false},
+  ];
+  if(anyClkTarget) clicksDS.push({label:'Target',data:clkTarget,borderColor:'#4b5563',borderDash:[5,5],pointRadius:0});
+  new Chart(clicksChart,{type:'line',data:{labels,datasets:clicksDS},options:chartOpts});
+
+  new Chart(imprChart,{type:'line',data:{labels,datasets:[
+    {label:'Actual',data:imprActual,borderColor:'#06b6d4',backgroundColor:'rgba(6,182,212,.1)',fill:true,tension:.3},
+    {label:'Projected',data:imprProj,borderColor:'#06b6d4',pointStyle:'circle',pointRadius:6,pointBackgroundColor:'transparent',pointBorderColor:'#06b6d4',pointBorderWidth:2,showLine:false},
+  ]},options:chartOpts});
+
+  const t10DS = [{label:'Actual',data:top10Actual,borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,.1)',fill:true,tension:.3}];
+  if(anyT10Target) t10DS.push({label:'Target',data:t10Target,borderColor:'#4b5563',borderDash:[5,5],pointRadius:0});
+  new Chart(top10Chart,{type:'line',data:{labels,datasets:t10DS},options:chartOpts});
+
+  new Chart(tierChart,{type:'bar',data:{labels,datasets:[
+    {label:'VH',data:rows.map(r=>r.tiers["Very high"]),backgroundColor:'#6366f1'},
+    {label:'H',data:rows.map(r=>r.tiers["High"]),backgroundColor:'#3b82f6'},
+    {label:'M',data:rows.map(r=>r.tiers["Mid"]),backgroundColor:'#06b6d4'},
+    {label:'L',data:rows.map(r=>r.tiers["L"]),backgroundColor:'#64748b'},
+  ]},options:{...chartOpts,scales:{x:{stacked:true,ticks:{color:'#8b8f9e'},grid:{color:'#2a2e3d'}},y:{stacked:true,ticks:{color:'#8b8f9e'},grid:{color:'#2a2e3d'}}}}});
+});
+</script>
+</body></html>
