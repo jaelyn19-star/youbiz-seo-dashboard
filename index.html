@@ -37,7 +37,22 @@ td.label{text-align:left;font-weight:600}
 .hp-table td{text-align:left;padding:8px 12px}
 .hp-table td:last-child{text-align:center}
 .footer{color:var(--dim);font-size:11px;margin-top:24px;text-align:center;line-height:1.6}
+#gate{display:none;position:fixed;inset:0;background:var(--bg);z-index:1000;align-items:center;justify-content:center}
+#gate .box{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:32px;width:min(360px,90vw);text-align:center}
+#gate h2{font-size:18px;margin-bottom:6px;background:linear-gradient(135deg,var(--accent),#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+#gate p{color:var(--dim);font-size:13px;margin-bottom:18px}
+#gate input{width:100%;padding:11px 13px;border-radius:9px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;margin-bottom:12px}
+#gate button{width:100%;padding:11px;border-radius:9px;border:none;background:var(--accent);color:#fff;font-weight:600;font-size:14px;cursor:pointer}
+#gateErr{color:var(--red);font-size:12.5px;min-height:16px;margin-top:10px}
 </style></head><body>
+
+<div id="gate"><form id="gateForm" class="box">
+  <h2>YouBiz SEO Dashboard</h2>
+  <p>This dashboard is password-protected.</p>
+  <input id="gatePw" type="password" placeholder="Password" autocomplete="current-password" autofocus>
+  <button type="submit">View dashboard</button>
+  <div id="gateErr"></div>
+</form></div>
 
 <h1>YouBiz SEO Dashboard</h1>
 <div class="subtitle" id="subtitle">loading…</div>
@@ -82,18 +97,19 @@ const projImpr = r => (r.days && r.days_in_month && r.days < r.days_in_month)
 const chartOpts = {responsive:true,plugins:{legend:{labels:{color:'#8b8f9e',font:{size:11}}}},
   scales:{x:{ticks:{color:'#8b8f9e'},grid:{color:'#2a2e3d'}},y:{ticks:{color:'#8b8f9e'},grid:{color:'#2a2e3d'}}}};
 
-fetch("data.json?_="+Date.now()).then(r=>r.json()).then(d=>{
+function renderDashboard(d){
   const rows = d.rows;
-  const cur = rows[rows.length-1];
-  const curPartial = cur.days < cur.days_in_month - 2;
+  const actualRows = rows.filter(r=>!r.future);
+  const cur = actualRows[actualRows.length-1] || rows[rows.length-1];
+  const curPartial = !cur.future && cur.days < cur.days_in_month - 2;
   const hasTargets = d.targets_set;
 
   document.getElementById("subtitle").innerHTML =
-    `GSC-based metrics &middot; blog only (<code>you.co/biz/blog/</code>) &middot; Updated ${d.generated} &middot; `
-    + `<a href="${d.sheet_url}" target="_blank">📄 Source sheet → Dashboard v2</a>`;
+    `GSC-based metrics &middot; blog only (<code>you.co/biz/blog/</code>) &middot; Updated ${d.generated}`
+    + (d.sheet_url ? ` &middot; <a href="${d.sheet_url}" target="_blank">📄 Source sheet → Dashboard v2</a>` : '');
 
   // Launch-baseline notice
-  const totalClicks = rows.reduce((s,r)=>s+r.clicks,0);
+  const totalClicks = rows.reduce((s,r)=>s+(r.clicks||0),0);
   document.getElementById("notice").innerHTML =
     `<b>Blog just launched.</b> This tracks the YouBiz blog only — homepage & product pages are excluded. `
     + `Organic blog traffic was ~0 through the early months; total blog clicks across the period so far: <b>${totalClicks}</b>. `
@@ -127,25 +143,28 @@ fetch("data.json?_="+Date.now()).then(r=>r.json()).then(d=>{
     <th>Impr(SGP)</th><th>MoM</th><th>Top10</th><th>Target</th><th>%</th><th>MoM</th>
     <th>VH</th><th>H</th><th>M</th><th>L</th><th>HP</th></tr>`;
   const body = rows.map(r=>{
+    const isF = r.future;
     const partial = r===cur && curPartial;
     const cpr = proj(r), ipr = projImpr(r);
-    const cPct = r.clicks_target ? pct(partial?cpr:r.clicks, r.clicks_target) : null;
-    const tPct = r.top10_target ? pct(r.top10, r.top10_target) : null;
+    const cPct = (!isF && r.clicks_target) ? pct(partial?cpr:r.clicks, r.clicks_target) : null;
+    const tPct = (!isF && r.top10_target) ? pct(r.top10, r.top10_target) : null;
     const t = r.tiers;
-    return `<tr>
-      <td class="label">${r.month}${partial?` <span style="color:var(--dim);font-weight:400">(${r.days}d)</span>`:''}</td>
-      <td>${num(r.clicks)}${partial?` <span style="color:var(--dim)">→${num(cpr)}</span>`:''}</td>
+    const tag = partial ? ` <span style="color:var(--dim);font-weight:400">(${r.days}d)</span>`
+              : (isF ? ` <span style="color:var(--dim);font-weight:400">(target)</span>` : '');
+    return `<tr${isF?' style="opacity:.55"':''}>
+      <td class="label">${r.month}${tag}</td>
+      <td>${isF?'':num(r.clicks)}${partial?` <span style="color:var(--dim)">→${num(cpr)}</span>`:''}</td>
       <td>${r.clicks_target?num(r.clicks_target):'—'}</td>
       <td class="${pctClass(cPct)}">${cPct!=null?cPct+'%':''}</td>
-      <td>${momHTML(r.clicks_mom)}</td>
-      <td>${num(r.impressions)}${partial?` <span style="color:var(--dim)">→${num(ipr)}</span>`:''}</td>
-      <td>${momHTML(r.impr_mom)}</td>
-      <td>${r.top10}</td>
+      <td>${isF?'':momHTML(r.clicks_mom)}</td>
+      <td>${isF?'':num(r.impressions)}${partial?` <span style="color:var(--dim)">→${num(ipr)}</span>`:''}</td>
+      <td>${isF?'':momHTML(r.impr_mom)}</td>
+      <td>${isF?'':r.top10}</td>
       <td>${r.top10_target?num(r.top10_target):'—'}</td>
       <td class="${pctClass(tPct)}">${tPct!=null?tPct+'%':''}</td>
-      <td>${momHTML(r.top10_mom,'')}</td>
-      <td>${t["Very high"]}</td><td>${t["High"]}</td><td>${t["Mid"]}</td><td>${t["L"]}</td>
-      <td>${r.p1_in_top10}/${r.p1_total}</td>
+      <td>${isF?'':momHTML(r.top10_mom,'')}</td>
+      <td>${isF?'':t["Very high"]}</td><td>${isF?'':t["High"]}</td><td>${isF?'':t["Mid"]}</td><td>${isF?'':t["L"]}</td>
+      <td>${isF?'':r.p1_in_top10+'/'+r.p1_total}</td>
     </tr>`;
   }).join("");
   document.getElementById("monthlyTable").innerHTML = head + body;
@@ -188,6 +207,50 @@ fetch("data.json?_="+Date.now()).then(r=>r.json()).then(d=>{
     {label:'M',data:rows.map(r=>r.tiers["Mid"]),backgroundColor:'#06b6d4'},
     {label:'L',data:rows.map(r=>r.tiers["L"]),backgroundColor:'#64748b'},
   ]},options:{...chartOpts,scales:{x:{stacked:true,ticks:{color:'#8b8f9e'},grid:{color:'#2a2e3d'}},y:{stacked:true,ticks:{color:'#8b8f9e'},grid:{color:'#2a2e3d'}}}}});
-});
+}
+
+// ---- Loader: plaintext locally, password-gated (encrypted) when published ----
+// Local dev serves data.json (no password). The public build ships ONLY data.enc
+// (AES-GCM, key derived from the password via PBKDF2) — the data is unreadable
+// without the password, which is never stored in the page.
+async function decryptPayload(password){
+  const meta = await (await fetch("data.enc?_="+Date.now())).json();
+  const raw = Uint8Array.from(atob(meta.data), c=>c.charCodeAt(0));
+  const salt = raw.slice(0,16), iv = raw.slice(16,28), ct = raw.slice(28);
+  const baseKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt, iterations:meta.iter, hash:"SHA-256"},
+    baseKey, {name:"AES-GCM", length:256}, false, ["decrypt"]);
+  const buf = await crypto.subtle.decrypt({name:"AES-GCM", iv}, key, ct);
+  return JSON.parse(new TextDecoder().decode(buf));
+}
+
+function showGate(message){
+  document.getElementById("gate").style.display = "flex";
+  if(message) document.getElementById("gateErr").textContent = message;
+  const inp = document.getElementById("gatePw"); inp.focus();
+  document.getElementById("gateForm").onsubmit = async (e)=>{
+    e.preventDefault();
+    document.getElementById("gateErr").textContent = "";
+    try{
+      const d = await decryptPayload(inp.value);
+      sessionStorage.setItem("yb_pw", inp.value);
+      document.getElementById("gate").style.display = "none";
+      renderDashboard(d);
+    }catch(err){
+      document.getElementById("gateErr").textContent = "Wrong password — try again.";
+      inp.select();
+    }
+  };
+}
+
+// Try local plaintext first; if absent, go to the password gate.
+fetch("data.json?_="+Date.now()).then(r=>{ if(!r.ok) throw 0; return r.json(); })
+  .then(renderDashboard)
+  .catch(async ()=>{
+    const saved = sessionStorage.getItem("yb_pw");
+    if(saved){ try{ return renderDashboard(await decryptPayload(saved)); }catch(e){ sessionStorage.removeItem("yb_pw"); } }
+    showGate();
+  });
 </script>
 </body></html>
