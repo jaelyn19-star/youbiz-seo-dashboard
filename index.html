@@ -10,6 +10,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 h1{font-size:24px;font-weight:700;background:linear-gradient(135deg,var(--accent),#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px}
 .subtitle{color:var(--dim);font-size:13px;margin-bottom:14px}
 .subtitle a{color:var(--accent);text-decoration:none}
+.updated{display:inline-flex;align-items:center;gap:7px;margin:2px 0 16px;padding:6px 12px;border-radius:999px;font-size:12.5px;font-weight:600;border:1px solid var(--border)}
+.updated .dot{width:8px;height:8px;border-radius:50%}
+.updated.fresh{background:rgba(34,197,94,.10);color:var(--green)} .updated.fresh .dot{background:var(--green)}
+.updated.stale{background:rgba(245,158,11,.10);color:var(--amber)} .updated.stale .dot{background:var(--amber)}
+.updated.old{background:rgba(239,68,68,.10);color:var(--red)} .updated.old .dot{background:var(--red)}
+.updated .when{color:var(--dim);font-weight:400}
 .notice{background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.3);color:var(--amber);border-radius:10px;padding:11px 14px;font-size:12.5px;margin-bottom:22px;line-height:1.5}
 .notice b{color:#fbbf24}
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-bottom:24px}
@@ -55,6 +61,7 @@ td.label{text-align:left;font-weight:600}
 </form></div>
 
 <h1>YouBiz SEO Dashboard</h1>
+<div class="updated" id="updated" style="display:none"></div>
 <div class="subtitle" id="subtitle">loading…</div>
 <div class="notice" id="notice"></div>
 
@@ -104,8 +111,23 @@ function renderDashboard(d){
   const curPartial = !cur.future && cur.days < cur.days_in_month - 2;
   const hasTargets = d.targets_set;
 
+  // Prominent freshness badge — green if refreshed today, amber/red if it's gone stale
+  // (also an at-a-glance "is the daily auto-refresh still working?" signal).
+  (function(){
+    const gen = new Date(d.generated + "T00:00:00");
+    const today = new Date(); today.setHours(0,0,0,0);
+    const days = Math.round((today - gen) / 86400000);
+    const rel = days <= 0 ? "today" : (days === 1 ? "yesterday" : days + " days ago");
+    const cls = days <= 1 ? "fresh" : (days <= 3 ? "stale" : "old");
+    const fmt = gen.toLocaleDateString("en-GB", {day:"numeric", month:"short", year:"numeric"});
+    const el = document.getElementById("updated");
+    el.className = "updated " + cls;
+    el.innerHTML = `<span class="dot"></span>Last updated: ${fmt} <span class="when">(${rel})</span>`;
+    el.style.display = "inline-flex";
+  })();
+
   document.getElementById("subtitle").innerHTML =
-    `GSC-based metrics &middot; blog only (<code>you.co/biz/blog/</code>) &middot; Updated ${d.generated}`
+    `GSC-based metrics &middot; blog only (<code>you.co/biz/blog/</code>)`
     + (d.sheet_url ? ` &middot; <a href="${d.sheet_url}" target="_blank">📄 Source sheet → Dashboard v2</a>` : '');
 
   // Launch-baseline notice
