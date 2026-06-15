@@ -149,7 +149,7 @@ function renderDashboard(d){
      s:`${curPartial?`Projected: ${num(ip)} &middot; `:''}Coverage: ${cur.coverage}/${cur.universe}`},
     {l:`Top 10 Keywords (GSC SGP) &middot; ${cur.month}`,
      v:`${cur.top10}${hasTargets&&cur.top10_target?` <span style="font-size:18px;color:var(--dim)">/ ${cur.top10_target}</span>`:''}`,
-     s:`${t10pctV!=null?`(<span class="${pctClass(t10pctV)}">${t10pctV}%</span> of target) &middot; `:''}MoM: ${momHTML(cur.top10_mom,'')||'—'} &middot; HP: ${cur.p1_in_top10}/${cur.p1_total}`},
+     s:`${t10pctV!=null?`(<span class="${pctClass(t10pctV)}">${t10pctV}%</span> of target) &middot; `:''}MoM: ${momHTML(cur.top10_mom,'')||'—'} &middot; Priority-1: ${cur.p1_in_top10}/${cur.p1_total}`},
   ];
   document.getElementById("kpis").innerHTML = kpis.map(k=>
     `<div class="kpi"><div class="kpi-label">${k.l}</div><div class="kpi-value">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join("");
