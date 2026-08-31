@@ -96,6 +96,31 @@ const momHTML = (v,suffix="%") => v==null ? '<span class=""></span>'
   : `<span class="${v>0?'pos':(v<0?'neg':'')}">${v>0?'+':''}${v}${suffix}</span>`;
 const posBadge = p => p==null ? '<span class="badge none">—</span>'
   : `<span class="badge ${p<=5?'ok':(p<=10?'warn':'miss')}">#${Math.round(p)}</span>`;
+
+// --- Top 10 v1.1 diagnosis cells -------------------------------------------------------
+// Surfacing rate divides two different bases (one search showing two URLs counts once at query
+// level and twice at page level), so it is shown as a directional signal and can exceed 100%.
+const surfCell = r => r==null ? '<span class="badge none">—</span>'
+  : `<span title="Target-page impressions / query impressions. Directional only — the bases differ.">${Math.round(r*100)}%</span>`;
+// A median off two live days is not a rank. Advisory only: it changes no metric, it just stops
+// a 2-of-30 number being read like a 28-of-30 one.
+const daysCell = h => h.days_with_impressions==null ? '<span class="badge none">—</span>'
+  : `<span class="${h.thin?'neg':''}" title="${h.thin?'Thin: median rests on very few days with impressions':'Days with impressions in the 30-day window'}">${h.days_with_impressions}/30${h.thin?' ⚠':''}</span>`;
+const DIAG = {
+  healthy:        ["ok",   "Holding — no action"],
+  page_selection: ["warn", "The right page ranks, the wrong one surfaces — consolidation and internal linking, not a rewrite"],
+  true_miss:      ["miss", "The target page genuinely ranks outside the Top 10 — content depth and authority"],
+  invisible:      ["miss", "Real search volume, zero impressions — indexing and on-page targeting, not a refresh"],
+  no_demand:      ["none", "No measurable search volume — an AEO / brand-defence term, judged on citation not rank"],
+  no_data:        ["none", "No signal in the window"],
+};
+const diagBadge = h => {
+  const [cls, tip] = DIAG[h.classification] || ["none", ""];
+  if (!h.classification) return '<span class="badge none">—</span>';
+  const warn = h.landing_page_mismatch ? ' ⚠' : '';
+  const mtip = h.landing_page_mismatch ? ` | Declared landing page is not the URL actually ranking` : '';
+  return `<span class="badge ${cls}" title="${tip}${mtip}">${h.classification.replace(/_/g,' ')}${warn}</span>`;
+};
 const proj = r => (r.days && r.days_in_month && r.days < r.days_in_month)
   ? Math.round(r.clicks / r.days * r.days_in_month) : null;
 const projImpr = r => (r.days && r.days_in_month && r.days < r.days_in_month)
@@ -154,11 +179,26 @@ function renderDashboard(d){
   document.getElementById("kpis").innerHTML = kpis.map(k=>
     `<div class="kpi"><div class="kpi-label">${k.l}</div><div class="kpi-value">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join("");
 
-  // HP / Priority keyword tracker
-  document.getElementById("hpTitle").textContent = `${d.hp_label} (${d.hp_tracker.length} keywords)`;
+  // HP / Priority keyword tracker — Top 10 methodology v1.1.
+  // The position column says a keyword missed the Top 10; the diagnosis says WHY, and the four
+  // failure classes take opposite remedies. Blank cells are deliberate: a keyword with no
+  // impressions has no page position to compare against.
+  const v11 = d.hp_methodology === "v1.1";
+  document.getElementById("hpTitle").textContent =
+    `${d.hp_label} (${d.hp_tracker.length} keywords)` + (v11 ? " · v1.1" : "");
   document.getElementById("hpTable").innerHTML =
-    `<tr><th style="text-align:left">Keyword</th><th style="text-align:left">Value</th><th style="text-align:left">SV</th><th>Blog Position</th></tr>`
-    + d.hp_tracker.map(h=>`<tr><td>${h.keyword}</td><td>${h.value}</td><td>${h.sv||'—'}</td><td>${posBadge(h.position)}</td></tr>`).join("");
+    `<tr><th style="text-align:left">Keyword</th><th style="text-align:left">Value</th>
+     <th style="text-align:left">SV</th><th>Blog Position</th>`
+    + (v11 ? `<th>Target Page</th><th>Surfacing</th><th>Days</th>
+              <th style="text-align:left">Diagnosis</th>` : ``)
+    + `</tr>`
+    + d.hp_tracker.map(h=>`<tr><td>${h.keyword}</td><td>${h.value}</td><td>${h.sv||'—'}</td>
+        <td>${posBadge(h.position)}</td>`
+      + (v11 ? `<td>${posBadge(h.target_page_position)}</td>
+                <td>${surfCell(h.surfacing_rate)}</td>
+                <td>${daysCell(h)}</td>
+                <td>${diagBadge(h)}</td>` : ``)
+      + `</tr>`).join("");
 
   // Monthly performance table
   const head = `<tr><th>Month</th><th>Clicks</th><th>Target</th><th>%</th><th>MoM</th>
